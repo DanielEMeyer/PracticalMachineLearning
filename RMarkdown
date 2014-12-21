@@ -1,0 +1,98 @@
+---
+title: "Practical Machine Learning Project"
+author: "Daniel Meyer"
+date: "December 21, 2014"
+output: html_document
+---
+
+This is the writeup for my final project in Practical Machine Learning on Coursera through Johns Hopkins. Our task was to use motion sensor data to determine whether an exercise was performed correctly, class A, or incorrectly in one of four difference ways, class B through E. 
+
+We load in the packages and data we will need. 
+```{r}
+library(ggplot2)
+library(caret)
+library(gridExtra)
+
+trainingRaw<-read.csv("/Users/danielmeyer/Documents/F14/CourseraML/pml-training.csv")
+testing<-read.csv("/Users/danielmeyer/Documents/F14/CourseraML/pml-testing.csv")
+```
+
+Though the data is already partitioned into training and test, we will further partition our training data into a training and test set so we can get a better idea of what the out of sample error will be. 
+
+```{r}
+inTrain <- createDataPartition(y=trainingRaw$classe,
+                               p=0.7, list=FALSE)
+training.full <- trainingRaw[inTrain,]
+testingPractice <- trainingRaw[-inTrain,]
+```
+
+While one focus of this project is choosing what algorithm to use, it is far more improtant to make sure we understand the question, use the right data, and select the proper features. 
+
+Our question data set were given to us, so those step are taken care of. We however must still select the right features. The data set consists of 160 variables, not all will be useful features. For instance timestamp and username will not be useful predictors. Additionally many variables are missing, all 0, or NA. 
+
+```{r, echo=FALSE}
+str(training.full)
+```
+
+This allows us to identify and filter out these variables.
+
+```{r}
+training.subset1<-training.full[c(2, 8:11, 37:49, 60:68, 84:86, 102, 113:124, 140, 151:160)]
+```
+
+This leaves us with about 55 variables, mostly are x y z and roll pitch yaw measures. Further, most of these have overlapping information. We can make a correlation matrix. 
+
+
+```{r, echo=FALSE}
+M <- abs(cor(training.subset1[2:53]))
+diag(M) <- 0
+which(M > 0.9,arr.ind=T)
+```
+
+Additionally we can plot some of these variables and see that they look very similar. Here are plots of measures from the motion sensor on the arm that each tell us pretty similar information. 
+
+```{r}
+qplot(seq_along(roll_arm) ,roll_belt, colour=classe,data=training.subset1)
+qplot(seq_along(pitch_arm) ,pitch_belt, colour=classe,data=training.subset1)
+qplot(seq_along(yaw_arm) ,yaw_belt, colour=classe,data=training.subset1)
+```
+
+This set of predictors might be good for helping separate out class E, but doesn't tell us much about differences among the rest, so we can leave that up to other sets of variables from other sensors or other readings from this sensor. The same pattern is true with many other plots where all x, y, z of a measure or the roll, pitch, and yaw of a variable tell us similar information. To cut down on variables and improve run time we will drop most of these somewhat duplicates keeping only one of the three. It also just makes some intuitive sense that variables collected from the belt would clue is in as to weather or not the user was "throwing their hips" which is class E. We shouldn't need all the variables relating to hip movement, just some of them. Similar logic can be applied to the elbows and incomplete movement of the dumbbell. 
+
+```{r}
+training.subset2<-training.subset1[c(2, 5, 6, 9, 12, 15, 18, 19, 22, 25, 28, 31, 32, 35, 38, 41, 44, 45, 48, 51, 54)]
+```
+
+Finally we can run our model. 
+
+```{r}
+modFit <- train(classe ~., method="rf", data=training.subset2)
+print(modFit$finalModel)
+```
+
+
+Then we can generate a confusion matrix. 
+
+```{r}
+predictions.training<-predict(modFit, newdata = training.subset2)
+confusion<-confusionMatrix(predictions.training, training.subset2$classe)
+confusion
+```
+
+We can then apply our model to the test set we created and then to the actual test set of 20 observations. 
+
+```{r}
+predictions.testingPractice<-predict(modFit, newdata = testingPractice)
+confusion2<-confusionMatrix(predictions.testingPractice, testingPractice$classe)
+confusion2
+
+predictions.testing<-predict(modFit, newdata = testing)
+```
+
+Our final predictions for the test set are as follows
+
+```{r}
+predictions.testing
+```
+
+Our model was very accurate, it had 100% accuracy on the training data! Holy cow thats good, but I was worried this was because it was overfitting. We still got very good accuracy on the practice test data, 98.7%. I expect that on this test data we will have a similar accuracy. I expect to accurately classify 19 or possibly all 20 observations correctly.  
